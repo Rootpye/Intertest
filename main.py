@@ -1,77 +1,105 @@
 import tkinter as tk
 import speedtest
 import threading
-import time
 
-def test_internet_speed(label_download, label_upload, label_ping, label_status):
-    """
-    인터넷 속도를 측정하고 결과를 업데이트.
-    """
-    try:
-        label_status.config(text="속도 측정 중... 잠시만 기다려 주세요.", fg="blue")
-        st = speedtest.Speedtest()
+class SpeedTestApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Intertest")
 
-        # 서버 목록 가져오기 및 최적의 서버 선택
-        st.get_servers()
-        best_server = st.get_best_server()
+        # GUI Setup
+        self.frame = tk.Frame(root, padx=10, pady=10)
+        self.frame.pack(padx=20, pady=20)
 
-        label_status.config(text=f"서버: {best_server['host']} ({best_server['d']:.2f} km)", fg="green")
+        self.label_status = tk.Label(self.frame, text="Press the button to start the test.", font=("Arial", 14), fg="black")
+        self.label_status.grid(row=0, column=0, columnspan=2, pady=10)
 
-        while True:
-            # 다운로드 속도 측정
-            download_speed = st.download() / 1_000_000  # Mbps 변환
-            label_download.config(text=f"다운로드 속도: {download_speed:.2f} Mbps")
-            
-            # 업로드 속도 측정
-            upload_speed = st.upload() / 1_000_000  # Mbps 변환
-            label_upload.config(text=f"업로드 속도: {upload_speed:.2f} Mbps")
-            
-            # 핑 측정
-            ping = best_server['latency']
-            label_ping.config(text=f"핑: {ping:.2f} ms")
+        self.label_server = tk.Label(self.frame, text="Server: --", font=("Arial", 12))
+        self.label_server.grid(row=1, column=0, sticky="w", padx=10)
 
-            time.sleep(2)  # 2초마다 업데이트
+        self.label_download = tk.Label(self.frame, text="Download Speed: -- Mbps", font=("Arial", 12))
+        self.label_download.grid(row=2, column=0, sticky="w", padx=10)
 
-    except speedtest.ConfigRetrievalError:
-        label_status.config(text="서버 설정을 가져오는 데 실패했습니다.", fg="red")
-    except Exception as e:
-        label_status.config(text=f"오류 발생: {str(e)}", fg="red")
+        self.label_upload = tk.Label(self.frame, text="Upload Speed: -- Mbps", font=("Arial", 12))
+        self.label_upload.grid(row=3, column=0, sticky="w", padx=10)
 
-def start_speed_test(label_download, label_upload, label_ping, label_status):
-    """
-    별도의 스레드에서 속도 측정을 시작.
-    """
-    threading.Thread(
-        target=test_internet_speed, 
-        args=(label_download, label_upload, label_ping, label_status), 
-        daemon=True
-    ).start()
+        self.label_ping = tk.Label(self.frame, text="Ping: -- ms", font=("Arial", 12))
+        self.label_ping.grid(row=4, column=0, sticky="w", padx=10)
 
-# GUI 구성
-root = tk.Tk()
-root.title("인터넷 속도 측정기")
+        self.start_button = tk.Button(self.frame, text="Start Speed Test", font=("Arial", 12), command=self.start_speed_test)
+        self.start_button.grid(row=5, column=0, columnspan=2, pady=10)
 
-# 레이아웃 설정
-frame = tk.Frame(root, padx=10, pady=10)
-frame.pack(padx=20, pady=20)
+        # Speed test object and state
+        self.st = speedtest.Speedtest()
+        self.best_server = None
+        self.running = False
 
-label_status = tk.Label(frame, text="측정을 시작하려면 버튼을 누르세요.", font=("Arial", 14), fg="black")
-label_status.grid(row=0, column=0, columnspan=2, pady=10)
+    def perform_speed_test(self):
+        """
+        Measures internet speed and updates the labels with results.
+        """
+        try:
+            # Measure download speed
+            download_speed = self.st.download() / 1_000_000  # Convert to Mbps
+            self.label_download.config(text=f"Download Speed: {download_speed:.2f} Mbps")
 
-label_download = tk.Label(frame, text="다운로드 속도: -- Mbps", font=("Arial", 12))
-label_download.grid(row=1, column=0, sticky="w", padx=10)
+            # Measure upload speed
+            upload_speed = self.st.upload() / 1_000_000  # Convert to Mbps
+            self.label_upload.config(text=f"Upload Speed: {upload_speed:.2f} Mbps")
 
-label_upload = tk.Label(frame, text="업로드 속도: -- Mbps", font=("Arial", 12))
-label_upload.grid(row=2, column=0, sticky="w", padx=10)
+            # Update ping (retrieved from the selected server)
+            ping = self.best_server['latency']
+            self.label_ping.config(text=f"Ping: {ping:.2f} ms")
 
-label_ping = tk.Label(frame, text="핑: -- ms", font=("Arial", 12))
-label_ping.grid(row=3, column=0, sticky="w", padx=10)
+            # Completion message
+            self.label_status.config(text="Test Completed", fg="green")
+        except speedtest.ConfigRetrievalError:
+            self.label_status.config(text="Failed to retrieve server configuration.", fg="red")
+        except speedtest.SpeedtestHTTPError:
+            self.label_status.config(text="HTTP error occurred during the test.", fg="red")
+        except Exception as e:
+            self.label_status.config(text=f"Error: {e}", fg="red")
+        finally:
+            self.running = False  # End test state
 
-start_button = tk.Button(
-    frame, text="속도 측정 시작", font=("Arial", 12), 
-    command=lambda: start_speed_test(label_download, label_upload, label_ping, label_status)
-)
-start_button.grid(row=4, column=0, columnspan=2, pady=10)
+    def start_speed_test(self):
+        """
+        Starts the speed test.
+        """
+        if self.running:
+            return  # Ignore if already running
 
-# GUI 실행
-root.mainloop()
+        self.running = True
+        self.label_status.config(text="Finding the closest server...", fg="blue")
+
+        # Initialize server in a separate thread
+        threading.Thread(target=self.initialize_speedtest, daemon=True).start()
+
+    def initialize_speedtest(self):
+        """
+        Selects the closest server and performs the speed test.
+        """
+        try:
+            self.st.get_servers()  # Retrieve all servers
+            self.best_server = self.st.get_best_server()  # Select the closest server
+
+            server_info = f"{self.best_server['host']} ({self.best_server['name']}, {self.best_server['country']})"
+            self.label_server.config(text=f"Server: {server_info}")
+
+            # Update status to indicate server connection
+            self.label_status.config(text="Running the speed test...", fg="blue")
+
+            # Perform the speed test
+            self.perform_speed_test()
+        except speedtest.ConfigRetrievalError:
+            self.label_status.config(text="Failed to retrieve servers.", fg="red")
+        except Exception as e:
+            self.label_status.config(text=f"Server initialization failed: {e}", fg="red")
+        finally:
+            self.running = False  # End test state
+
+# Run the GUI
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = SpeedTestApp(root)
+    root.mainloop()
